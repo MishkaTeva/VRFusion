@@ -1,0 +1,87 @@
+--------- beginning of main
+10-20 20:47:51.366 30861 30861 I VRFusionActivity: Forced 120Hz mode: 1080x2340 @ 120.00001Hz
+10-20 20:47:51.688 30861 30861 I VRFusionActivity: Hardware H.264 MediaCodec started for 120Hz stereo display
+10-20 20:47:51.850 30861 30900 E VideoWorker: Decode error
+10-20 20:47:51.850 30861 30900 E VideoWorker: java.net.SocketException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.IoBridge.maybeThrowAfterRecvfrom(IoBridge.java:794)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:745)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.doRecv(PlainDatagramSocketImpl.java:154)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.receive0(PlainDatagramSocketImpl.java:142)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at java.net.AbstractPlainDatagramSocketImpl.receive(AbstractPlainDatagramSocketImpl.java:164)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at java.net.DatagramSocket.receive(DatagramSocket.java:849)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at com.vrfusion.tracker.VideoWorker.run(VideoWorker.java:35)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at java.lang.Thread.run(Thread.java:1571)
+10-20 20:47:51.850 30861 30900 E VideoWorker: Caused by: android.system.ErrnoException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.Linux.recvfromBytes(Native Method)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.Linux.recvfrom(Linux.java:254)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.BlockGuardOs.recvfrom(BlockGuardOs.java:360)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:742)
+10-20 20:47:51.850 30861 30900 E VideoWorker: 	... 6 more
+10-20 20:48:15.419 30861 30861 I VRFusionActivity: Hardware H.264 MediaCodec started for 120Hz stereo display
+10-20 20:48:15.443 30861 30926 E VideoWorker: Decode error
+10-20 20:48:15.443 30861 30926 E VideoWorker: java.net.SocketException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.IoBridge.maybeThrowAfterRecvfrom(IoBridge.java:794)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:745)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.doRecv(PlainDatagramSocketImpl.java:154)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.receive0(PlainDatagramSocketImpl.java:142)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at java.net.AbstractPlainDatagramSocketImpl.receive(AbstractPlainDatagramSocketImpl.java:164)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at java.net.DatagramSocket.receive(DatagramSocket.java:849)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at com.vrfusion.tracker.VideoWorker.run(VideoWorker.java:35)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at java.lang.Thread.run(Thread.java:1571)
+10-20 20:48:15.443 30861 30926 E VideoWorker: Caused by: android.system.ErrnoException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.Linux.recvfromBytes(Native Method)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.Linux.recvfrom(Linux.java:254)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.BlockGuardOs.recvfrom(BlockGuardOs.java:360)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:742)
+10-20 20:48:15.443 30861 30926 E VideoWorker: 	... 6 more
+10-20 20:48:36.759 30942 30942 I VRFusionActivity: Forced 120Hz mode: 1080x2340 @ 120.00001Hz
+10-20 20:48:36.917 30942 30942 I VRFusionActivity: Hardware H.264 MediaCodec started for 120Hz stereo display
+10-20 20:48:37.422 30942 30986 E VideoWorker: Decode error
+10-20 20:48:37.422 30942 30986 E VideoWorker: java.net.SocketException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.IoBridge.maybeThrowAfterRecvfrom(IoBridge.java:794)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:745)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.doRecv(PlainDatagramSocketImpl.java:154)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.receive0(PlainDatagramSocketImpl.java:142)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at java.net.AbstractPlainDatagramSocketImpl.receive(AbstractPlainDatagramSocketImpl.java:164)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at java.net.DatagramSocket.receive(DatagramSocket.java:849)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at com.vrfusion.tracker.VideoWorker.run(VideoWorker.java:35)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at java.lang.Thread.run(Thread.java:1571)
+10-20 20:48:37.422 30942 30986 E VideoWorker: Caused by: android.system.ErrnoException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.Linux.recvfromBytes(Native Method)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.Linux.recvfrom(Linux.java:254)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.BlockGuardOs.recvfrom(BlockGuardOs.java:360)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:742)
+10-20 20:48:37.422 30942 30986 E VideoWorker: 	... 6 more
+10-20 20:50:00.796 30942 30942 I VRFusionActivity: Hardware H.264 MediaCodec started for 120Hz stereo display
+10-20 20:50:01.300 30942 31195 E VideoWorker: Decode error
+10-20 20:50:01.300 30942 31195 E VideoWorker: java.net.SocketException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.IoBridge.maybeThrowAfterRecvfrom(IoBridge.java:794)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:745)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.doRecv(PlainDatagramSocketImpl.java:154)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at java.net.PlainDatagramSocketImpl.receive0(PlainDatagramSocketImpl.java:142)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at java.net.AbstractPlainDatagramSocketImpl.receive(AbstractPlainDatagramSocketImpl.java:164)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at java.net.DatagramSocket.receive(DatagramSocket.java:849)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at com.vrfusion.tracker.VideoWorker.run(VideoWorker.java:35)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at java.lang.Thread.run(Thread.java:1571)
+10-20 20:50:01.300 30942 31195 E VideoWorker: Caused by: android.system.ErrnoException: recvfrom failed: EBADF (Bad file descriptor)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.Linux.recvfromBytes(Native Method)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.Linux.recvfrom(Linux.java:254)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.BlockGuardOs.recvfrom(BlockGuardOs.java:360)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.ForwardingOs.recvfrom(ForwardingOs.java:459)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	at libcore.io.IoBridge.recvfrom(IoBridge.java:742)
+10-20 20:50:01.300 30942 31195 E VideoWorker: 	... 6 more
+10-20 21:11:06.136 32492 32492 I VRFusionActivity: Forced 120Hz mode: 1080x2340 @ 120.00001Hz
+10-20 21:11:06.271 32492 32492 I VRFusionActivity: Hardware H.264 MediaCodec started for 120Hz stereo display
+10-20 21:11:06.273 32492 32541 I VideoWorker: TCP Video Server listening on port 6004 (ready for USB/Wi-Fi stream)
+10-20 21:11:11.498 32492 32492 I VRFusionActivity: Forced 120Hz mode: 1080x2340 @ 120.00001Hz
+10-20 21:11:11.659 32492 32492 I VRFusionActivity: Hardware H.264 MediaCodec started for 120Hz stereo display
+10-20 21:11:11.660 32492 32667 I VideoWorker: TCP Video Server listening on port 6004 (ready for USB/Wi-Fi stream)
+10-20 21:12:22.403 32492 32667 I VideoWorker: Video Stream Connected from /192.168.31.2:55829
+10-20 21:12:44.312 32492 32667 I VideoWorker: Video Stream Connected from /192.168.31.2:61103

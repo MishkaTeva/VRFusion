@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net6.0-windows</TargetFramework>
+    <RootNamespace>VRFusion</RootNamespace>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>VRFusionServer</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="SharpOSC" Version="2.5.0" />
+    <PackageReference Include="OpenVR.NET" Version="1.0.3" />
+    <PackageReference Include="XInputDotNetPure" Version="2.0.0" />
+  </ItemGroup>
+</Project>

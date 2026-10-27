@@ -1,0 +1,5 @@
+{
+  "jsonid": "input_profile",
+  "device_type": "vive_tracker",
+  "legacy_binding": "{htc}/input/legacy_bindings_tracker.json"
+}
