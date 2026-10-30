@@ -40,6 +40,10 @@ using namespace vr;
 static const int IMU_PORT = 9550; // Phone UDP port
 static const int DRIVER_CMD_PORT = 9555; // PC Control Center UDP port
 
+static std::string g_phoneSenderIp = "192.168.31.6";
+static std::atomic<uint64_t> g_lastImuPacketTime{ 0 };
+static std::mutex g_phoneIpMutex;
+
 static float g_userIpdMeters = 0.063f;
 static int g_viewportIpdShift = 0;
 static float g_kinectCenterZ = 0.0f;
@@ -1100,11 +1104,22 @@ static void UdpReceiverThread() {
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (char*)&timeout, sizeof(timeout));
 
     char buf[256];
+    sockaddr_in fromAddr{};
+    int fromLen = sizeof(fromAddr);
     while (g_running) {
-        int r = recv(sock, buf, sizeof(buf), 0);
+        fromLen = sizeof(fromAddr);
+        int r = recvfrom(sock, buf, sizeof(buf), 0, (sockaddr*)&fromAddr, &fromLen);
         if (r >= sizeof(BinaryIMUPacket)) {
             auto* pkt = reinterpret_cast<BinaryIMUPacket*>(buf);
             if (memcmp(pkt->magic, "KVRI", 4) == 0 && g_hmd) {
+                char ipStr[64] = {0};
+                inet_ntop(AF_INET, &fromAddr.sin_addr, ipStr, sizeof(ipStr));
+                if (ipStr[0] != '\0') {
+                    std::lock_guard<std::mutex> lock(g_phoneIpMutex);
+                    g_phoneSenderIp = ipStr;
+                }
+                g_lastImuPacketTime = GetTickCount64();
+
                 // Phone sends OpenVR-standard quaternion (X=right, Y=up, -Z=fwd):
                 g_hmd->UpdateOrientation(pkt->qw, pkt->qx, pkt->qy, pkt->qz);
                 if (g_hmd->IsActivated()) {
@@ -1783,9 +1798,19 @@ static void DriverCommandThread() {
             }
             std::string reply = "OK";
             if (cmd.find("GET_STAT") != std::string::npos || cmd.find("GET_TELEMETRY") != std::string::npos || cmd.find("PING") != std::string::npos) {
+                std::string currentPhoneIp;
+                {
+                    std::lock_guard<std::mutex> lock(g_phoneIpMutex);
+                    currentPhoneIp = g_phoneSenderIp;
+                }
+                uint64_t nowMs = GetTickCount64();
+                uint64_t lastImuMs = g_lastImuPacketTime.load();
+                int imuAlive = (lastImuMs > 0 && (nowMs - lastImuMs) < 2000) ? 1 : 0;
+                int imuAgeMs = (lastImuMs > 0) ? (int)(nowMs - lastImuMs) : 99999;
+
                 char statBuf[512];
                 snprintf(statBuf, sizeof(statBuf),
-                         "STAT:YAW=%.1f;PITCH=%.1f;ROLL=%.1f;IPD=%.1f;SHIFT=%d;KINECT=%d;KMIRROR=%d;TILT=%ld;SEATED=%d;HEIGHT=%.2f;AUTOTILT=%d;CAM=%d;KX=%.2f;KY=%.2f;KZ=%.2f;KPITCH=%.1f;KROLL=%.1f;MLOCK=%d",
+                         "STAT:YAW=%.1f;PITCH=%.1f;ROLL=%.1f;IPD=%.1f;SHIFT=%d;KINECT=%d;KMIRROR=%d;TILT=%ld;SEATED=%d;HEIGHT=%.2f;AUTOTILT=%d;CAM=%d;KX=%.2f;KY=%.2f;KZ=%.2f;KPITCH=%.1f;KROLL=%.1f;MLOCK=%d;PHONE_IP=%s;IMU_ALIVE=%d;IMU_AGE=%d",
                          g_telemYaw.load(), g_telemPitch.load(), g_telemRoll.load(),
                          g_userIpdMeters * 1000.0f, g_viewportIpdShift,
                          g_kinectTracking ? 1 : 0, g_kinectMirror ? 1 : 0,
@@ -1794,7 +1819,8 @@ static void DriverCommandThread() {
                          g_kinectCamMode.load(),
                          g_kinectAccX.load(), g_kinectAccY.load(), g_kinectAccZ.load(),
                          g_kinectPitch.load(), g_kinectRoll.load(),
-                         g_kinectMotorLocked.load() ? 1 : 0);
+                         g_kinectMotorLocked.load() ? 1 : 0,
+                         currentPhoneIp.c_str(), imuAlive, imuAgeMs);
                 reply = statBuf;
             }
             sendto(sock, reply.c_str(), (int)reply.size(), 0, (sockaddr*)&clientAddr, clientLen);

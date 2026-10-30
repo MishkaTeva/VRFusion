@@ -34,29 +34,71 @@ Stop-Process -Name ffmpeg -Force -ErrorAction SilentlyContinue
 # Disconnect any stray TV device (192.168.31.124) from ADB
 & $adb disconnect 192.168.31.124:5555 2>$null | Out-Null
 
+$defaultPhoneIp = '192.168.31.6'
+$phoneWifiIp = $defaultPhoneIp
+
+# Check currently attached ADB devices
 $devs = @(& $adb devices | Where-Object { $_ -match "\bdevice\b" -and $_ -notmatch "List of" -and $_ -notmatch "192\.168\.31\.124" })
-$serial = if ($devs.Count -gt 0) { ($devs[0].Trim() -split '\s+')[0] } else { 'R5CRC476JPV' }
-Write-Host "Podklyuchennoe ustroystvo (telefon): $serial" -ForegroundColor Cyan
 
-# Determine real phone IP dynamically from device (defaulting to 192.168.31.6)
-$phoneWifiIp = '192.168.31.6'
-try {
-    $ipOut = & $adb -s $serial shell "ip -4 addr show wlan0"
-    if ($ipOut -match 'inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)') {
-        $phoneWifiIp = $matches[1]
+# Check if there is a physical USB device (serial has no colon or dot)
+$usbDev = $devs | Where-Object { $_ -notmatch ":" } | ForEach-Object { ($_ -split '\s+')[0] } | Select-Object -First 1
+
+if ($usbDev) {
+    $serial = $usbDev
+    $isUsbMode = $true
+    Write-Host "[+] USB podklyuchenie obnaruzheno: $serial" -ForegroundColor Green
+
+    # Enable wireless ADB port 5555 so Wi-Fi ADB is primed if cable is unplugged
+    & $adb -s $serial tcpip 5555 2>$null | Out-Null
+
+    # Forward ports for USB low latency & 0 packet loss
+    Write-Host '[1/5] Probros USB portov (6004, 9550, 9552)...' -ForegroundColor Yellow
+    & $adb -s $serial forward tcp:6004 tcp:6004
+    & $adb -s $serial forward tcp:9550 tcp:9550
+    & $adb -s $serial forward tcp:9552 tcp:9552
+
+    # Query real phone Wi-Fi IP dynamically from device
+    try {
+        $ipOut = & $adb -s $serial shell "ip -4 addr show wlan0"
+        if ($ipOut -match 'inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)') {
+            $phoneWifiIp = $matches[1]
+        }
+    } catch {}
+    Write-Host "Wi-Fi IP telefona: $phoneWifiIp" -ForegroundColor Cyan
+
+    # Wake up, unlock and launch app on phone
+    Write-Host '[2/5] Zapusk prilozheniya VRFusion na telefone (USB)...' -ForegroundColor Yellow
+    & $adb -s $serial shell 'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n com.vrfusion.tracker/.MainActivity; am start-foreground-service -a com.vrfusion.tracker.START -n com.vrfusion.tracker/.VRFusionService --es extra_ip 192.168.31.2'
+
+    $target = 'tcp://127.0.0.1:6004'
+    Write-Host "[OK] Rezhim svyazi: USB (127.0.0.1:6004) - 0 poter, 120 FPS!" -ForegroundColor Green
+} else {
+    $isUsbMode = $false
+    Write-Host "[!] USB kabel ne obnaruzhen. Rabotaem v besprovodnom rezhime WI-FI!" -ForegroundColor Yellow
+
+    # Attempt to connect Wireless ADB to phone
+    Write-Host "Podklyuchenie Wireless ADB k ${phoneWifiIp}:5555..." -ForegroundColor Cyan
+    & $adb connect "${phoneWifiIp}:5555" 2>$null | Out-Null
+    Start-Sleep -Milliseconds 400
+
+    $wifiDev = @(& $adb devices | Where-Object { $_ -match [regex]::Escape("${phoneWifiIp}:5555") -and $_ -match "\bdevice\b" })
+    if ($wifiDev.Count -gt 0) {
+        $serial = "${phoneWifiIp}:5555"
+        Write-Host "[+] Wireless ADB uspeshno podklyuchen: $serial" -ForegroundColor Green
+
+        # Forward command port 9552
+        & $adb -s $serial forward tcp:9552 tcp:9552 2>$null
+
+        # Wake up, dismiss lockscreen and launch VRFusion app over Wi-Fi
+        Write-Host '[2/5] Zapusk prilozheniya VRFusion na telefone (Wi-Fi ADB)...' -ForegroundColor Yellow
+        & $adb -s $serial shell 'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n com.vrfusion.tracker/.MainActivity; am start-foreground-service -a com.vrfusion.tracker.START -n com.vrfusion.tracker/.VRFusionService --es extra_ip 192.168.31.2'
+    } else {
+        Write-Host "[i] Wireless ADB ne otvetil. Ozhidanie pryamogo Wi-Fi soedineniya..." -ForegroundColor DarkYellow
     }
-} catch {}
-Write-Host "Wi-Fi IP telefona: $phoneWifiIp" -ForegroundColor Cyan
 
-# 1. Forward USB ports for ultra-low latency & zero packet loss
-Write-Host '[1/5] Proverka podklyucheniya telefona i probros portov...' -ForegroundColor Yellow
-& $adb -s $serial forward tcp:6004 tcp:6004
-& $adb -s $serial forward tcp:9550 tcp:9550
-& $adb -s $serial forward tcp:9552 tcp:9552
-
-# 2. Wake up, unlock and launch app on phone
-Write-Host '[2/5] Zapusk prilozheniya VRFusion na telefone...' -ForegroundColor Yellow
-& $adb -s $serial shell 'input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n com.vrfusion.tracker/.MainActivity; am start-foreground-service -a com.vrfusion.tracker.START -n com.vrfusion.tracker/.VRFusionService --es extra_ip 192.168.31.2'
+    $target = "tcp://${phoneWifiIp}:6004"
+    Write-Host "[OK] Rezhim svyazi: WI-FI DIRECT ($target) - 120 FPS NVENC Stereo!" -ForegroundColor Green
+}
 
 # 3. Stop standalone server to ensure driver_vrfusion.dll has exclusive Kinect 360 & Port 9550 access
 Write-Host '[3/5] Podgotovka drayvera VRFusion (Kinect 360 FBT + 120Hz IMU)...' -ForegroundColor Yellow
@@ -75,18 +117,29 @@ if (!$vrProc) {
 Write-Host '[5/5] Podklyuchenie k pryamomu stereo-kanalu SteamVR (Named Pipe)...' -ForegroundColor Yellow
 $pipePath = '\\.\pipe\vrfusion_stream'
 
-# Re-verify ADB port forwarding for video and tracking
-if ($serial) {
-    & $adb -s $serial forward tcp:6004 tcp:6004 2>$null
-    & $adb -s $serial forward tcp:9552 tcp:9552 2>$null
-    & $adb -s $serial forward tcp:9550 tcp:9550 2>$null
-    $target = 'tcp://127.0.0.1:6004'
-    Write-Host '[OK] Svyaz po USB portu 6004 aktivna (127.0.0.1:6004) - 0 poter, 120 FPS!' -ForegroundColor Green
-} elseif ($phoneWifiIp) {
-    $target = "tcp://${phoneWifiIp}:6004"
-    Write-Host "Pereklyuchenie na pryamoy Wi-Fi telefona: $phoneWifiIp:6004..." -ForegroundColor DarkYellow
+# Wait for phone video receiver port 6004 to be ready (prevents ffmpeg connection drops)
+$checkHost = if ($target -match '//([^:]+):') { $matches[1] } else { '127.0.0.1' }
+Write-Host "Proverka gotovnosti videopriyomnika ($checkHost : 6004)..." -ForegroundColor Gray
+$portReady = $false
+for ($i = 0; $i -lt 16; $i++) {
+    try {
+        $sock = New-Object System.Net.Sockets.TcpClient
+        $iar = $sock.BeginConnect($checkHost, 6004, $null, $null)
+        if ($iar.AsyncWaitHandle.WaitOne(400, $false) -and $sock.Connected) {
+            $sock.EndConnect($iar)
+            $sock.Close()
+            $portReady = $true
+            break
+        }
+        $sock.Close()
+    } catch {}
+    Start-Sleep -Milliseconds 400
+}
+
+if ($portReady) {
+    Write-Host "[OK] Videopriyomnik telefona gotov k priyomu 120 FPS potoka!" -ForegroundColor Green
 } else {
-    $target = 'tcp://127.0.0.1:6004'
+    Write-Host "[!] Port 6004 eshche ne otvechaet, popytka pryamogo podklyucheniya..." -ForegroundColor DarkYellow
 }
 
 Write-Host ''

@@ -32,6 +32,9 @@ class VRFusionControlCenter:
 
         # Connection & State
         self.serial = DEFAULT_SERIAL
+        self.phone_ip = "192.168.31.6"
+        self.connection_type = "NONE"
+        self.imu_alive = False
         self.is_connected = False
         self.driver_connected = False
         self.polling_active = True
@@ -708,48 +711,95 @@ class VRFusionControlCenter:
                 # Disconnect stray TV
                 subprocess.run([ADB_PATH, "disconnect", "192.168.31.124:5555"],
                                capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
-                # Find device serial
+
                 res = subprocess.run([ADB_PATH, "devices"], capture_output=True, text=True,
                                      timeout=3, creationflags=CREATE_NO_WINDOW)
-                for line in res.stdout.splitlines():
-                    parts = line.strip().split()
-                    if len(parts) >= 2 and parts[1] == "device" and "192.168.31.124" not in parts[0]:
-                        self.serial = parts[0]
+                lines = [l.strip() for l in res.stdout.splitlines() if "192.168.31.124" not in l]
+                usb_dev = None
+                for line in lines:
+                    parts = line.split()
+                    if len(parts) >= 2 and parts[1] == "device" and ":" not in parts[0]:
+                        usb_dev = parts[0]
                         break
 
-                # Forward ports
-                subprocess.run([ADB_PATH, "-s", self.serial, "forward", f"tcp:{PHONE_CMD_PORT}", f"tcp:{PHONE_CMD_PORT}"],
-                               capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
-                subprocess.run([ADB_PATH, "-s", self.serial, "forward", "tcp:6004", "tcp:6004"],
-                               capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
-                subprocess.run([ADB_PATH, "-s", self.serial, "forward", "tcp:9550", "tcp:9550"],
-                               capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
+                if usb_dev:
+                    self.serial = usb_dev
+                    self.connection_type = "USB"
+                    self.is_connected = True
 
-                # Wake up and ensure app is foreground
-                subprocess.run([ADB_PATH, "-s", self.serial, "shell",
-                                "input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n com.vrfusion.tracker/.MainActivity; am start-foreground-service -a com.vrfusion.tracker.START -n com.vrfusion.tracker/.VRFusionService --es extra_ip 192.168.31.2"],
-                               capture_output=True, timeout=3, creationflags=CREATE_NO_WINDOW)
+                    # Prime wireless adb port
+                    subprocess.run([ADB_PATH, "-s", self.serial, "tcpip", "5555"],
+                                   capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
 
-                self.log(f"Телефон подключен ({self.serial}). Порты USB проброшены.")
+                    # Forward ports
+                    subprocess.run([ADB_PATH, "-s", self.serial, "forward", f"tcp:{PHONE_CMD_PORT}", f"tcp:{PHONE_CMD_PORT}"],
+                                   capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
+                    subprocess.run([ADB_PATH, "-s", self.serial, "forward", "tcp:6004", "tcp:6004"],
+                                   capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
+                    subprocess.run([ADB_PATH, "-s", self.serial, "forward", "tcp:9550", "tcp:9550"],
+                                   capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
+
+                    # Query real Wi-Fi IP from phone
+                    try:
+                        ip_res = subprocess.run([ADB_PATH, "-s", self.serial, "shell", "ip -4 addr show wlan0"],
+                                                capture_output=True, text=True, timeout=2, creationflags=CREATE_NO_WINDOW)
+                        import re
+                        m = re.search(r'inet\s+([0-9]+\.[0-9]+\.[0-9]+\.[0-9]+)', ip_res.stdout)
+                        if m:
+                            self.phone_ip = m.group(1)
+                    except Exception:
+                        pass
+
+                    # Wake up and ensure app is foreground
+                    subprocess.run([ADB_PATH, "-s", self.serial, "shell",
+                                    "input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n com.vrfusion.tracker/.MainActivity; am start-foreground-service -a com.vrfusion.tracker.START -n com.vrfusion.tracker/.VRFusionService --es extra_ip 192.168.31.2"],
+                                   capture_output=True, timeout=3, creationflags=CREATE_NO_WINDOW)
+
+                    self.log(f"Телефон подключен по USB ({self.serial}). IP: {self.phone_ip}")
+                else:
+                    # Wi-Fi mode
+                    subprocess.run([ADB_PATH, "connect", f"{self.phone_ip}:5555"],
+                                   capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
+                    self.serial = f"{self.phone_ip}:5555"
+                    self.connection_type = "WI-FI (ADB)"
+                    self.is_connected = True
+
+                    subprocess.run([ADB_PATH, "-s", self.serial, "forward", f"tcp:{PHONE_CMD_PORT}", f"tcp:{PHONE_CMD_PORT}"],
+                                   capture_output=True, timeout=2, creationflags=CREATE_NO_WINDOW)
+                    subprocess.run([ADB_PATH, "-s", self.serial, "shell",
+                                    "input keyevent KEYCODE_WAKEUP; wm dismiss-keyguard; am start -n com.vrfusion.tracker/.MainActivity; am start-foreground-service -a com.vrfusion.tracker.START -n com.vrfusion.tracker/.VRFusionService --es extra_ip 192.168.31.2"],
+                                   capture_output=True, timeout=3, creationflags=CREATE_NO_WINDOW)
+
+                    self.log(f"Телефон подключен по Wi-Fi ({self.phone_ip}:5555).")
             except Exception as e:
-                self.log(f"ADB статус: {e}")
+                self.log(f"Статус подключения: {e}")
 
         threading.Thread(target=worker, daemon=True).start()
 
     def send_phone_command(self, cmd):
         def worker():
-            # 1. Primary: Direct UDP to port 9552 (instant, non-blocking)
+            data = (cmd + "\n").encode("utf-8")
+            # 1. Primary: Direct UDP to port 9552 (localhost for USB / ADB forward)
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.settimeout(0.1)
-                data = (cmd + "\n").encode("utf-8")
                 s.sendto(data, ("127.0.0.1", PHONE_CMD_PORT))
                 s.close()
             except Exception:
                 pass
 
-            # 2. Fast ADB Broadcast with package specified and quoted cmd
-            if os.path.exists(ADB_PATH):
+            # 2. Direct UDP to phone Wi-Fi IP (for seamless wireless communication)
+            if self.phone_ip and self.phone_ip != "127.0.0.1":
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                    s.settimeout(0.1)
+                    s.sendto(data, (self.phone_ip, PHONE_CMD_PORT))
+                    s.close()
+                except Exception:
+                    pass
+
+            # 3. Fast ADB Broadcast if ADB device is connected
+            if os.path.exists(ADB_PATH) and self.serial:
                 try:
                     subprocess.run(
                         [ADB_PATH, "-s", self.serial, "shell", "am", "broadcast",
@@ -760,15 +810,26 @@ class VRFusionControlCenter:
                 except Exception:
                     pass
 
-            # 3. Direct TCP localhost
+            # 4. Direct TCP localhost
             try:
                 s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 s.settimeout(0.1)
                 s.connect(("127.0.0.1", PHONE_CMD_PORT))
-                s.sendall((cmd + "\n").encode("utf-8"))
+                s.sendall(data)
                 s.close()
             except Exception:
                 pass
+
+            # 5. Direct TCP to phone Wi-Fi IP
+            if self.phone_ip and self.phone_ip != "127.0.0.1":
+                try:
+                    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                    s.settimeout(0.1)
+                    s.connect((self.phone_ip, PHONE_CMD_PORT))
+                    s.sendall(data)
+                    s.close()
+                except Exception:
+                    pass
 
         threading.Thread(target=worker, daemon=True).start()
 
@@ -778,7 +839,7 @@ class VRFusionControlCenter:
                 s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 s.settimeout(0.3)
                 s.sendto(cmd.encode("utf-8"), ("127.0.0.1", DRIVER_CMD_PORT))
-                resp, _ = s.recvfrom(256)
+                resp, _ = s.recvfrom(512)
                 s.close()
                 resp_str = resp.decode("utf-8", errors="ignore")
                 if resp_str.startswith("STAT:"):
@@ -803,7 +864,7 @@ class VRFusionControlCenter:
                 d = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                 d.settimeout(0.3)
                 d.sendto(b"GET_STAT", ("127.0.0.1", DRIVER_CMD_PORT))
-                resp, _ = d.recvfrom(256)
+                resp, _ = d.recvfrom(512)
                 d.close()
                 if resp:
                     resp_str = resp.decode("utf-8", errors="ignore")
@@ -814,23 +875,59 @@ class VRFusionControlCenter:
                 pass
             self.driver_connected = driver_ok
 
-            # 2. Check phone presence every 1.5 seconds via ADB
+            # If driver reports active IMU stream, phone is definitively online
+            if getattr(self, 'imu_alive', False):
+                self.is_connected = True
+                if self.connection_type == "NONE":
+                    self.connection_type = "WI-FI"
+
+            # 2. Check phone presence every 1.6 seconds via ADB
             adb_check_counter += 1
-            if adb_check_counter >= 3:
+            if adb_check_counter >= 4:
                 adb_check_counter = 0
                 try:
                     res = subprocess.run([ADB_PATH, "devices"], capture_output=True, text=True,
                                          timeout=1.5, creationflags=CREATE_NO_WINDOW)
-                    for line in res.stdout.splitlines():
-                        parts = line.strip().split()
-                        if len(parts) >= 2 and parts[1] == "device" and "192.168.31.124" not in parts[0]:
-                            self.serial = parts[0]
+                    lines = [l.strip() for l in res.stdout.splitlines() if "192.168.31.124" not in l]
+                    usb_found = None
+                    wifi_found = None
+                    for line in lines:
+                        parts = line.split()
+                        if len(parts) >= 2 and parts[1] == "device":
+                            dev_id = parts[0]
+                            if ":" not in dev_id:
+                                usb_found = dev_id
+                            elif self.phone_ip in dev_id:
+                                wifi_found = dev_id
+
+                    if usb_found:
+                        self.serial = usb_found
+                        self.connection_type = "USB"
+                        self.is_connected = True
+                    elif wifi_found:
+                        self.serial = wifi_found
+                        self.connection_type = "WI-FI (ADB)"
+                        self.is_connected = True
+                    else:
+                        # Auto-reconnect wireless ADB if disconnected
+                        if not self.is_connected:
+                            try:
+                                subprocess.run([ADB_PATH, "connect", f"{self.phone_ip}:5555"],
+                                               capture_output=True, timeout=1.0, creationflags=CREATE_NO_WINDOW)
+                            except Exception:
+                                pass
+                        if getattr(self, 'imu_alive', False):
+                            self.connection_type = "WI-FI"
                             self.is_connected = True
-                            break
+                        else:
+                            self.connection_type = "NONE"
+                            self.is_connected = False
+                except Exception:
+                    if getattr(self, 'imu_alive', False):
+                        self.connection_type = "WI-FI"
+                        self.is_connected = True
                     else:
                         self.is_connected = False
-                except Exception:
-                    self.is_connected = False
 
             self.root.after(0, self._update_gui_telemetry)
             time.sleep(0.4)
@@ -880,12 +977,21 @@ class VRFusionControlCenter:
                         self.kinect_roll = float(v)
                     elif k == "MLOCK":
                         self.kinect_motor_locked = (v == "1")
+                    elif k == "PHONE_IP":
+                        if v and not v.startswith("127."):
+                            self.phone_ip = v
+                    elif k == "IMU_ALIVE":
+                        self.imu_alive = (v == "1")
+
         except Exception:
             pass
 
     def _update_gui_telemetry(self):
         if self.is_connected:
-            self.lbl_phone_status.config(text=f"● ТЕЛЕФОН: СВЯЗЬ АКТИВНА ({self.serial})", bg="#065f46", fg="#34d399")
+            if "USB" in getattr(self, 'connection_type', ''):
+                self.lbl_phone_status.config(text=f"● ТЕЛЕФОН: USB СВЯЗЬ АКТИВНА ({self.serial})", bg="#065f46", fg="#34d399")
+            else:
+                self.lbl_phone_status.config(text=f"● ТЕЛЕФОН: WI-FI СВЯЗЬ АКТИВНА ({self.phone_ip})", bg="#065f46", fg="#34d399")
         else:
             self.lbl_phone_status.config(text="● ТЕЛЕФОН: ОЖИДАНИЕ USB/WI-FI", bg="#1e293b", fg="#94a3b8")
 
