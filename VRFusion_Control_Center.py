@@ -318,7 +318,7 @@ class VRFusionControlCenter:
         # Tilt motor controls
         k_tilt_header = tk.Frame(kinect_card, bg="#121318")
         k_tilt_header.pack(fill=tk.X, pady=(2, 1))
-        tk.Label(k_tilt_header, text="Наклон электромотора (-12°..+16°):", font=("Segoe UI", 9), bg="#121318", fg="#cbd5e1").pack(side=tk.LEFT)
+        tk.Label(k_tilt_header, text="Угол наклона (-8°..+14°):", font=("Segoe UI", 9), bg="#121318", fg="#cbd5e1").pack(side=tk.LEFT)
         self.lbl_tilt_val = tk.Label(k_tilt_header, text="0°", font=("Segoe UI", 9, "bold"), bg="#121318", fg="#00e676")
         self.lbl_tilt_val.pack(side=tk.RIGHT)
 
@@ -331,7 +331,7 @@ class VRFusionControlCenter:
 
         k_tilt_btns = tk.Frame(kinect_card, bg="#121318")
         k_tilt_btns.pack(fill=tk.X, pady=(2, 4))
-        b_t_up = tk.Button(k_tilt_btns, text="⬆ Наклон +2°", font=("Segoe UI", 8, "bold"),
+        b_t_up = tk.Button(k_tilt_btns, text="⬆ Наклон +3°", font=("Segoe UI", 8, "bold"),
                            bg="#2563eb", fg="#ffffff", relief="flat", padx=6, pady=3, cursor="hand2",
                            command=self.action_kinect_tilt_up)
         b_t_up.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(0, 2))
@@ -341,7 +341,7 @@ class VRFusionControlCenter:
                              command=self.action_kinect_tilt_zero)
         b_t_zero.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=2)
 
-        b_t_down = tk.Button(k_tilt_btns, text="⬇ Наклон -2°", font=("Segoe UI", 8, "bold"),
+        b_t_down = tk.Button(k_tilt_btns, text="⬇ Наклон -3°", font=("Segoe UI", 8, "bold"),
                              bg="#2563eb", fg="#ffffff", relief="flat", padx=6, pady=3, cursor="hand2",
                              command=self.action_kinect_tilt_down)
         b_t_down.pack(side=tk.LEFT, fill=tk.X, expand=True, padx=(2, 0))
@@ -609,14 +609,14 @@ class VRFusionControlCenter:
             self.log("Мотор Kinect заблокирован! Разблокируйте его для изменения угла.")
             return
         self.send_driver_command("KINECT_TILT_UP")
-        self.log("Kinect 360: Наклон мотора вверх (+2°).")
+        self.log("Kinect 360: Наклон мотора вверх (+3°).")
 
     def action_kinect_tilt_down(self):
         if self.kinect_motor_locked:
             self.log("Мотор Kinect заблокирован! Разблокируйте его для изменения угла.")
             return
         self.send_driver_command("KINECT_TILT_DOWN")
-        self.log("Kinect 360: Наклон мотора вниз (-2°).")
+        self.log("Kinect 360: Наклон мотора вниз (-3°).")
 
     def action_kinect_tilt_zero(self):
         if self.kinect_motor_locked:

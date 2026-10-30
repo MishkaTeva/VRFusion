@@ -1242,29 +1242,28 @@ static void KinectElevationThread(INuiSensor* sensor) {
         long current = g_kinectTiltAngle.load();
 
         if (target != -999 && !g_kinectMotorLocked.load()) {
-            if (target < -12L) target = -12L;
-            if (target >  16L) target =  16L;
+            if (target < -8L) target = -8L;
+            if (target > 14L) target = 14L;
 
             if (target != current) {
-                // Slew step: at most +-2 degrees per motion
-                long diff = target - current;
-                long step = (diff > 0) ? (std::min)(2L, diff) : (std::max)(-2L, diff);
-                long nextAngle = current + step;
+                // Direct smooth motion to target angle in one single sweep
+                SafeSetElevation(sensor, target);
+                g_kinectTiltAngle.store(target);
 
-                SafeSetElevation(sensor, nextAngle);
-                g_kinectTiltAngle.store(nextAngle);
-
-                // Rest for 2 full seconds so motor finishes rotation and current settles
-                for (int i = 0; i < 20 && g_running; i++) {
+                // Wait for hardware motor rotation to finish and electrical current to settle
+                long diff = std::abs(target - current);
+                int waitMs = 700 + (int)(diff * 80);
+                int chunks = waitMs / 100;
+                for (int i = 0; i < chunks && g_running; i++) {
                     std::this_thread::sleep_for(std::chrono::milliseconds(100));
                 }
 
-                if (nextAngle == target) {
-                    g_targetTiltAngle.store(-999);
+                LONG phys = 0;
+                if (SafeGetElevation(sensor, &phys)) {
+                    g_kinectTiltAngle.store(phys);
                 }
-            } else {
-                g_targetTiltAngle.store(-999);
             }
+            g_targetTiltAngle.store(-999);
             lastAccCheck = std::chrono::steady_clock::now();
         } else {
             // Idle state: read accelerometer and angle at most once every 5 seconds
@@ -1335,6 +1334,7 @@ static void KinectThread() {
 
     int tiltUpFrames = 0;
     int tiltDownFrames = 0;
+    int lostFrames = 0;
 
     while (g_running) {
         // Safe single-threaded hardware settings update between frames
@@ -1375,64 +1375,71 @@ static void KinectThread() {
                             g_kinectCenterZ = head.z;
                         }
 
-                        // ── Auto-Tilt: 3D True Geometric Focus (Distance-Aware & Safe) ──
-                        if (g_kinectAutoTilt.load() && head.z >= 0.8f && head.z <= 4.8f) {
+                        // ── Auto-Tilt: True Deadband Full-Body Framing & Slew Jump ──
+                        if (g_kinectAutoTilt.load() && !g_kinectMotorLocked.load() && head.z >= 0.8f && head.z <= 4.8f) {
                             float zDist = head.z;
+                            float headAngleDeg = atan2(head.y, zDist) * 57.29578f;
+
                             bool feetTracked = (skel.eSkeletonPositionTrackingState[NUI_SKELETON_POSITION_FOOT_LEFT] == NUI_SKELETON_POSITION_TRACKED ||
                                                 skel.eSkeletonPositionTrackingState[NUI_SKELETON_POSITION_FOOT_RIGHT] == NUI_SKELETON_POSITION_TRACKED);
                             bool kneesTracked = (skel.eSkeletonPositionTrackingState[NUI_SKELETON_POSITION_KNEE_LEFT] == NUI_SKELETON_POSITION_TRACKED ||
                                                  skel.eSkeletonPositionTrackingState[NUI_SKELETON_POSITION_KNEE_RIGHT] == NUI_SKELETON_POSITION_TRACKED);
 
-                            // Determine true vertical center of the human in meters relative to sensor
-                            float personYCenter = 0.0f;
-                            if (g_kinectSeated.load()) {
-                                personYCenter = head.y - 0.35f;
-                            } else if (feetTracked) {
-                                float lowestFootY = (lfoot.y < rfoot.y) ? lfoot.y : rfoot.y;
-                                personYCenter = (head.y + lowestFootY) * 0.5f;
+                            float footY = 0.0f;
+                            float footZ = zDist;
+                            if (feetTracked) {
+                                footY = (lfoot.y < rfoot.y) ? lfoot.y : rfoot.y;
+                                footZ = (lfoot.y < rfoot.y) ? lfoot.z : rfoot.z;
                             } else if (kneesTracked) {
                                 float lowestKneeY = (lknee.y < rknee.y) ? lknee.y : rknee.y;
-                                personYCenter = (head.y + lowestKneeY - 0.40f) * 0.5f;
+                                footY = lowestKneeY - 0.45f;
                             } else {
-                                personYCenter = head.y - 0.45f;
+                                footY = hip.y - 0.85f;
                             }
+                            if (footZ < 0.5f) footZ = zDist;
+                            float footAngleDeg = atan2(footY, footZ) * 57.29578f;
 
-                            // Angle from camera line of sight to person center in degrees
-                            float targetAngleOffset = atan2(personYCenter, zDist) * 57.29578f;
+                            // Kinect vertical FOV is +-21.8 deg.
+                            // Stable comfort zone: Head in upper half (<= +14 deg), Feet in lower half (>= -14 deg).
+                            float deltaAngle = 0.0f;
 
-                            // Head safety check (camera vertical FOV is +-21.5 degrees)
-                            // If head angle exceeds +15 deg from optical axis, head is near the top edge
-                            float headAngle = atan2(head.y, zDist) * 57.29578f;
-                            if (headAngle > 14.5f) {
-                                targetAngleOffset = headAngle - 10.5f; // Tilt UP to preserve headroom
+                            if (headAngleDeg > 14.0f && footAngleDeg > -18.0f) {
+                                // Head too high and approaching top edge: tilt UP to place head at ~+9 deg
+                                deltaAngle = headAngleDeg - 9.0f;
+                            } else if (footAngleDeg < -14.0f && headAngleDeg < 18.0f) {
+                                // Feet too low and approaching bottom edge: tilt DOWN to place feet at ~-9 deg
+                                deltaAngle = footAngleDeg + 9.0f; // negative
+                            } else if (headAngleDeg > 14.0f && footAngleDeg < -14.0f) {
+                                // Person is closer than full vertical FOV: center on torso
+                                deltaAngle = (headAngleDeg + footAngleDeg) * 0.5f;
                             }
+                            // If both head and feet are comfortably inside (-14 deg to +14 deg), deltaAngle is 0 (SILENT MOTOR)
 
-                            // Safe physical bounds: never drop nose into floor (-12 deg min) or ceiling (+16 deg max)
-                            long cur = g_kinectTiltAngle.load();
-                            long desiredAngle = (long)std::round((float)cur + targetAngleOffset);
-                            if (desiredAngle < -12L) desiredAngle = -12L;
-                            if (desiredAngle >  16L) desiredAngle =  16L;
+                            if (std::abs(deltaAngle) >= 2.5f) {
+                                long cur = g_kinectTiltAngle.load();
+                                long desiredAngle = (long)std::round((float)cur + deltaAngle);
+                                // Hardware safety limits: never point down into floor (-8 deg) or into ceiling (+14 deg)
+                                if (desiredAngle < -8L) desiredAngle = -8L;
+                                if (desiredAngle > 14L) desiredAngle = 14L;
 
-                            long delta = desiredAngle - cur;
-
-                            // Deadband +-2 deg: prevents motor hunting and vibration
-                            if (std::abs(delta) >= 3L) {
-                                if (delta > 0) {
+                                long diff = desiredAngle - cur;
+                                if (diff > 0) {
                                     tiltUpFrames++;
                                     tiltDownFrames = 0;
-                                    if (tiltUpFrames >= 6) {
-                                        long step = (std::min)(4L, delta);
-                                        g_targetTiltAngle.store(cur + step);
+                                    if (tiltUpFrames >= 12 && g_targetTiltAngle.load() == -999) {
+                                        g_targetTiltAngle.store(desiredAngle); // DIRECT JUMP in one smooth sweep!
                                         tiltUpFrames = 0;
                                     }
-                                } else {
+                                } else if (diff < 0) {
                                     tiltDownFrames++;
                                     tiltUpFrames = 0;
-                                    if (tiltDownFrames >= 6) {
-                                        long step = (std::max)(-4L, delta);
-                                        g_targetTiltAngle.store(cur + step);
+                                    if (tiltDownFrames >= 12 && g_targetTiltAngle.load() == -999) {
+                                        g_targetTiltAngle.store(desiredAngle); // DIRECT JUMP in one smooth sweep!
                                         tiltDownFrames = 0;
                                     }
+                                } else {
+                                    tiltUpFrames = 0;
+                                    tiltDownFrames = 0;
                                 }
                             } else {
                                 tiltUpFrames = 0;
@@ -1493,6 +1500,20 @@ static void KinectThread() {
 
                 g_kinectTracking = found;
                 if (!found) {
+                    tiltUpFrames = 0;
+                    tiltDownFrames = 0;
+                    if (g_kinectAutoTilt.load() && !g_kinectMotorLocked.load()) {
+                        lostFrames++;
+                        // At ~30 FPS, 120 frames = ~4-5 seconds of sustained lost tracking
+                        if (lostFrames >= 120) {
+                            long cur = g_kinectTiltAngle.load();
+                            // If tilted away from 0 deg, automatically level back to 0 deg horizon
+                            if (cur != 0L && g_targetTiltAngle.load() == -999) {
+                                g_targetTiltAngle.store(0L);
+                            }
+                            lostFrames = 0;
+                        }
+                    }
                     if (g_trackerWaist)      g_trackerWaist->UpdatePosition(0, 0, 0, false);
                     if (g_trackerChest)      g_trackerChest->UpdatePosition(0, 0, 0, false);
                     if (g_trackerLeftFoot)   g_trackerLeftFoot->UpdatePosition(0, 0, 0, false);
@@ -1501,6 +1522,8 @@ static void KinectThread() {
                     if (g_trackerRightKnee)  g_trackerRightKnee->UpdatePosition(0, 0, 0, false);
                     if (g_trackerLeftElbow)  g_trackerLeftElbow->UpdatePosition(0, 0, 0, false);
                     if (g_trackerRightElbow) g_trackerRightElbow->UpdatePosition(0, 0, 0, false);
+                } else {
+                    lostFrames = 0;
                 }
             }
         }
@@ -1672,15 +1695,15 @@ static void DriverCommandThread() {
             } else if (cmd.find("KINECT_TILT_UP") != std::string::npos) {
                 if (!g_kinectMotorLocked.load()) {
                     long cur = (g_targetTiltAngle.load() != -999) ? g_targetTiltAngle.load() : g_kinectTiltAngle.load();
-                    long newAngle = cur + 2L;
-                    if (newAngle > 16L) newAngle = 16L;
+                    long newAngle = cur + 3L;
+                    if (newAngle > 14L) newAngle = 14L;
                     g_targetTiltAngle.store(newAngle);
                 }
             } else if (cmd.find("KINECT_TILT_DOWN") != std::string::npos) {
                 if (!g_kinectMotorLocked.load()) {
                     long cur = (g_targetTiltAngle.load() != -999) ? g_targetTiltAngle.load() : g_kinectTiltAngle.load();
-                    long newAngle = cur - 2L;
-                    if (newAngle < -12L) newAngle = -12L;
+                    long newAngle = cur - 3L;
+                    if (newAngle < -8L) newAngle = -8L;
                     g_targetTiltAngle.store(newAngle);
                 }
             } else if (cmd.find("KINECT_TILT_ZERO") != std::string::npos) {
@@ -1691,8 +1714,8 @@ static void DriverCommandThread() {
                 if (!g_kinectMotorLocked.load()) {
                     try {
                         long deg = std::stol(cmd.substr(16));
-                        if (deg > 16L) deg = 16L;
-                        if (deg < -12L) deg = -12L;
+                        if (deg > 14L) deg = 14L;
+                        if (deg < -8L) deg = -8L;
                         g_targetTiltAngle.store(deg);
                     } catch (...) {}
                 }
