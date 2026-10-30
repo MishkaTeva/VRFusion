@@ -1,9 +1,9 @@
 $vcvars = "C:\Program Files\Microsoft Visual Studio\2022\Community\VC\Auxiliary\Build\vcvars64.bat"
 $kinectInc = "C:\Program Files\Microsoft SDKs\Kinect\v1.8\inc"
 $kinectLib = "C:\Program Files\Microsoft SDKs\Kinect\v1.8\lib\amd64"
-$openvrInc = "Z:\NETtrash\Миша\VRFusion\driver_vrfusion\openvr"
-$src = "Z:\NETtrash\Миша\VRFusion\driver_vrfusion\src\driver_vrfusion.cpp"
-$outDir = "Z:\NETtrash\Миша\VRFusion\driver_vrfusion\bin\win64"
+$openvrInc = "$PSScriptRoot\driver_vrfusion\openvr"
+$src = "$PSScriptRoot\driver_vrfusion\src\driver_vrfusion.cpp"
+$outDir = "$PSScriptRoot\driver_vrfusion\bin\win64"
 $steamvrDir = "C:\Program Files (x86)\Steam\steamapps\common\SteamVR\drivers\vrfusion\bin\win64"
 
 if (!(Test-Path $outDir)) { New-Item -ItemType Directory -Path $outDir -Force | Out-Null }

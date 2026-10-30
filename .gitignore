@@ -1,4 +1,81 @@
+# ==========================================
+# VRFusion .gitignore
+# ==========================================
+
+# --- Large Binaries, Archives & Executables ---
+*.exe
+*.dll.manifest
 archives/
 screenshots/
-*.exe
 *.zip
+*.tar.gz
+*.7z
+
+# --- Logs & Dumps ---
+logs/
+*.log
+*.log.*
+*.dmp
+*.dump
+
+# --- C / C++ & Visual Studio Build Artifacts ---
+*.obj
+*.o
+*.lib
+*.a
+*.exp
+*.ilk
+*.pdb
+*.idb
+*.tlog
+*.recipe
+*.lastbuildstate
+.vs/
+x64/
+Debug/
+Release/
+*.VC.db
+*.opendb
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyd
+.Python
+*.venv/
+venv/
+env/
+.pytest_cache/
+
+# --- Android Build & Intermediate Artifacts ---
+app_src/bin/
+app_src/dex/
+app_src/aligned.apk
+app_src/unaligned.apk
+bin/classes/
+bin/dex/
+bin/*.apk
+*.class
+*.dex
+*.idsig
+.gradle/
+build/
+local.properties
+Captures/
+*.hprof
+
+# --- Windows & OS Clutter ---
+Thumbs.db
+desktop.ini
+$RECYCLE.BIN/
+.DS_Store
+
+# --- IDEs & Editors ---
+.idea/
+.vscode/
+*.suo
+*.user
+*.userosscache
+*.sln.docstates
