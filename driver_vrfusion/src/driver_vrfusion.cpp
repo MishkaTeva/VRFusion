@@ -656,10 +656,25 @@ public:
 
     void EnterStandby() override {
         m_inStandby = true;
+        m_userPresent = false;
     }
 
     void LeaveStandby() {
         m_inStandby = false;
+        m_userPresent = true;
+        if (m_hProximity != k_ulInvalidInputComponentHandle) {
+            if (auto vrinput = VRDriverInput()) {
+                vrinput->UpdateBooleanComponent(m_hProximity, true, 0.0);
+            }
+        }
+    }
+
+    bool IsUserPresent() const {
+        return m_userPresent;
+    }
+
+    bool IsInStandby() const {
+        return m_inStandby;
     }
 
     void* GetComponent(const char* pchComponentNameAndVersion) override {
@@ -709,26 +724,25 @@ public:
 
     void UpdateOrientation(float qw, float qx, float qy, float qz) {
         auto now = std::chrono::steady_clock::now();
-        bool becamePresent = false;
+        bool sendProximityUpdate = false;
+        bool newPresence = true;
         {
             std::lock_guard<std::mutex> lk(m_mutex);
             float d = std::abs(m_qw - qw) + std::abs(m_qx - qx) + std::abs(m_qy - qy) + std::abs(m_qz - qz);
             if (d > 0.0003f) {
                 m_lastHeadMovement = now;
-                if (!m_userPresent) {
+                if (!m_userPresent || m_inStandby) {
                     m_userPresent = true;
-                    becamePresent = true;
+                    m_inStandby = false;
+                    sendProximityUpdate = true;
+                    newPresence = true;
                 }
             } else {
                 auto idleSec = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastHeadMovement).count();
-                if (m_userPresent && idleSec >= 30) {
+                if (m_userPresent && idleSec >= 15) {
                     m_userPresent = false;
-                    becamePresent = false;
-                    if (m_hProximity != k_ulInvalidInputComponentHandle) {
-                        if (auto vrinput = VRDriverInput()) {
-                            vrinput->UpdateBooleanComponent(m_hProximity, false, 0.0);
-                        }
-                    }
+                    sendProximityUpdate = true;
+                    newPresence = false;
                 }
             }
             m_qw = qw;
@@ -736,9 +750,9 @@ public:
             m_qy = qy;
             m_qz = qz;
         }
-        if (becamePresent && m_hProximity != k_ulInvalidInputComponentHandle) {
+        if (sendProximityUpdate && m_hProximity != k_ulInvalidInputComponentHandle) {
             if (auto vrinput = VRDriverInput()) {
-                vrinput->UpdateBooleanComponent(m_hProximity, true, 0.0);
+                vrinput->UpdateBooleanComponent(m_hProximity, newPresence, 0.0);
             }
         }
     }
@@ -821,7 +835,8 @@ public:
     bool GetTimeSinceLastVsync(float *pfSecondsSinceLastVsync, uint64_t *pulFrameCounter) override {
         auto now = std::chrono::steady_clock::now();
         float elapsed = std::chrono::duration<float>(now - m_lastVsyncTime).count();
-        if (pfSecondsSinceLastVsync) *pfSecondsSinceLastVsync = elapsed;
+        float framePeriod = 1.0f / 120.0f;
+        if (pfSecondsSinceLastVsync) *pfSecondsSinceLastVsync = fmodf(elapsed, framePeriod);
         if (pulFrameCounter) *pulFrameCounter = ++m_vsyncCounter;
         return true;
     }
@@ -1951,7 +1966,9 @@ public:
             VRServerDriverHost()->TrackedDevicePoseUpdated(g_trackerRightElbow->GetDeviceId(), g_trackerRightElbow->GetPose(), sizeof(DriverPose_t));
     }
 
-    bool ShouldBlockStandbyMode() override { return false; }
+    bool ShouldBlockStandbyMode() override {
+        return (g_hmd != nullptr && g_hmd->IsUserPresent());
+    }
     void EnterStandby() override {
         if (g_hmd) g_hmd->EnterStandby();
     }
