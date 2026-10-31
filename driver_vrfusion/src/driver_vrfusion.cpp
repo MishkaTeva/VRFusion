@@ -739,7 +739,7 @@ public:
                 }
             } else {
                 auto idleSec = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastHeadMovement).count();
-                if (m_userPresent && idleSec >= 15) {
+                if (m_userPresent && idleSec >= 300) {
                     m_userPresent = false;
                     sendProximityUpdate = true;
                     newPresence = false;
