@@ -105,6 +105,11 @@ Write-Host '[3/5] Podgotovka drayvera VRFusion (Kinect 360 FBT + 120Hz IMU)...' 
 Stop-Process -Name 'VRFusion_Server' -Force -ErrorAction SilentlyContinue
 
 # 4. Start SteamVR
+$steamChap = 'C:\Program Files (x86)\Steam\config\chaperone_info.vrchap'
+$repoChap  = Join-Path $PSScriptRoot 'chaperone_info.vrchap'
+if ((Test-Path $repoChap) -and !(Test-Path $steamChap)) {
+    Copy-Item $repoChap $steamChap -Force -ErrorAction SilentlyContinue
+}
 Write-Host '[4/5] Zapusk SteamVR...' -ForegroundColor Yellow
 $vrProc = Get-Process -Name 'vrcompositor' -ErrorAction SilentlyContinue
 if (!$vrProc) {
