@@ -708,6 +708,9 @@ public:
         pose.vecPosition[0] = m_px;
         pose.vecPosition[1] = m_py;
         pose.vecPosition[2] = m_pz;
+        pose.vecAngularVelocity[0] = m_gx;
+        pose.vecAngularVelocity[1] = m_gy;
+        pose.vecAngularVelocity[2] = m_gz;
         return pose;
     }
 
@@ -722,14 +725,15 @@ public:
         }
     }
 
-    void UpdateOrientation(float qw, float qx, float qy, float qz) {
+    void UpdateOrientation(float qw, float qx, float qy, float qz, float gx = 0.0f, float gy = 0.0f, float gz = 0.0f) {
         auto now = std::chrono::steady_clock::now();
         bool sendProximityUpdate = false;
         bool newPresence = true;
         {
             std::lock_guard<std::mutex> lk(m_mutex);
+            float gyroMag = std::abs(gx) + std::abs(gy) + std::abs(gz);
             float d = std::abs(m_qw - qw) + std::abs(m_qx - qx) + std::abs(m_qy - qy) + std::abs(m_qz - qz);
-            if (d > 0.0003f) {
+            if (d > 0.0003f || gyroMag > 0.02f) {
                 m_lastHeadMovement = now;
                 if (!m_userPresent || m_inStandby) {
                     m_userPresent = true;
@@ -749,6 +753,9 @@ public:
             m_qx = qx;
             m_qy = qy;
             m_qz = qz;
+            m_gx = gx;
+            m_gy = gy;
+            m_gz = gz;
         }
         if (sendProximityUpdate && m_hProximity != k_ulInvalidInputComponentHandle) {
             if (auto vrinput = VRDriverInput()) {
@@ -847,6 +854,7 @@ private:
     std::atomic<bool> m_activated{false};
     std::mutex m_mutex;
     float m_qw = 1.0f, m_qx = 0.0f, m_qy = 0.0f, m_qz = 0.0f;
+    float m_gx = 0.0f, m_gy = 0.0f, m_gz = 0.0f;
     float m_px = 0.0f, m_py = 1.65f, m_pz = 0.0f;
     uint64_t m_lastFrameId = 0;
     SharedTextureHandle_t m_backbuffer = 0;
@@ -1142,8 +1150,8 @@ static void UdpReceiverThread() {
                 }
                 g_lastImuPacketTime = GetTickCount64();
 
-                // Phone sends OpenVR-standard quaternion (X=right, Y=up, -Z=fwd):
-                g_hmd->UpdateOrientation(pkt->qw, pkt->qx, pkt->qy, pkt->qz);
+                // Phone sends OpenVR-standard quaternion (X=right, Y=up, -Z=fwd) and angular velocity:
+                g_hmd->UpdateOrientation(pkt->qw, pkt->qx, pkt->qy, pkt->qz, pkt->gx, pkt->gy, pkt->gz);
                 if (g_hmd->IsActivated()) {
                     VRServerDriverHost()->TrackedDevicePoseUpdated(g_hmd->GetDeviceId(), g_hmd->GetPose(), sizeof(DriverPose_t));
                 }
