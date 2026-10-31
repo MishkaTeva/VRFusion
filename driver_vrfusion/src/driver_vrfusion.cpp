@@ -1910,8 +1910,11 @@ public:
     const char* const* GetInterfaceVersions() override { return k_InterfaceVersions; }
 
     void RunFrame() override {
-        // NOTE: IVRVirtualDisplay::WaitForPresent handles vsync for the compositor.
-        // Calling VsyncEvent here causes conflicting vsync ticks (purple lines in SteamVR graph).
+        // Drain events to keep SteamVR message pump responsive
+        VREvent_t vrEvent;
+        while (VRServerDriverHost()->PollNextEvent(&vrEvent, sizeof(vrEvent))) {
+            // Process events if needed
+        }
 
         if (g_hmd && g_hmd->IsActivated())
             VRServerDriverHost()->TrackedDevicePoseUpdated(g_hmd->GetDeviceId(), g_hmd->GetPose(), sizeof(DriverPose_t));
@@ -1945,6 +1948,9 @@ public:
 
         if (g_trackerRightElbow && g_trackerRightElbow->IsActivated())
             VRServerDriverHost()->TrackedDevicePoseUpdated(g_trackerRightElbow->GetDeviceId(), g_trackerRightElbow->GetPose(), sizeof(DriverPose_t));
+
+        // Yield processor & pace RunFrame (~200 Hz), preventing server_main watchdog aborts
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
     bool ShouldBlockStandbyMode() override { return false; }
