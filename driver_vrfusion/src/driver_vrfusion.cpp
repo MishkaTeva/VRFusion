@@ -625,10 +625,6 @@ public:
         props->SetBoolProperty  (m_container, Prop_IsOnDesktop_Bool,           false);
         props->SetBoolProperty  (m_container, Prop_HasVirtualDisplayComponent_Bool, true);
         props->SetBoolProperty  (m_container, Prop_DisplayDebugMode_Bool,      false);
-        props->SetBoolProperty  (m_container, Prop_ContainsProximitySensor_Bool, true);
-        props->SetBoolProperty  (m_container, Prop_DeviceProvidesBatteryStatus_Bool, false);
-        props->SetBoolProperty  (m_container, Prop_DeviceCanPowerOff_Bool,     true);
-        props->SetBoolProperty  (m_container, Prop_DeviceIsWireless_Bool,      true);
         props->SetBoolProperty  (m_container, Prop_ReportsTimeSinceVSync_Bool, true);
         props->SetBoolProperty  (m_container, Prop_DisplaySuppressed_Bool,     false);
         props->SetUint64Property(m_container, Prop_CurrentUniverseId_Uint64,   2);
@@ -636,11 +632,6 @@ public:
         props->SetFloatProperty (m_container, Prop_DisplayFrequency_Float,     120.0f);
         props->SetFloatProperty (m_container, Prop_UserIpdMeters_Float,        0.063f);
         props->SetStringProperty(m_container, Prop_InputProfilePath_String,    "{vrfusion}/input/vrfusion_hmd_profile.json");
-
-        if (auto vrinput = VRDriverInput()) {
-            vrinput->CreateBooleanComponent(m_container, "/input/proximity/click", &m_hProximity);
-            vrinput->UpdateBooleanComponent(m_hProximity, true, 0.0);
-        }
 
         m_activated = true;
         m_lastVsyncTime = std::chrono::steady_clock::now();
@@ -654,28 +645,8 @@ public:
         m_deviceId = k_unTrackedDeviceIndexInvalid;
     }
 
-    void EnterStandby() override {
-        m_inStandby = true;
-        m_userPresent = false;
-    }
-
-    void LeaveStandby() {
-        m_inStandby = false;
-        m_userPresent = true;
-        if (m_hProximity != k_ulInvalidInputComponentHandle) {
-            if (auto vrinput = VRDriverInput()) {
-                vrinput->UpdateBooleanComponent(m_hProximity, true, 0.0);
-            }
-        }
-    }
-
-    bool IsUserPresent() const {
-        return m_userPresent;
-    }
-
-    bool IsInStandby() const {
-        return m_inStandby;
-    }
+    void EnterStandby() override {}
+    void LeaveStandby() {}
 
     void* GetComponent(const char* pchComponentNameAndVersion) override {
         if (pchComponentNameAndVersion) {
@@ -714,54 +685,15 @@ public:
         return pose;
     }
 
-    void SetUserPresent(bool present) {
-        if (m_userPresent != present) {
-            m_userPresent = present;
-            if (m_hProximity != k_ulInvalidInputComponentHandle) {
-                if (auto vrinput = VRDriverInput()) {
-                    vrinput->UpdateBooleanComponent(m_hProximity, present, 0.0);
-                }
-            }
-        }
-    }
-
     void UpdateOrientation(float qw, float qx, float qy, float qz, float gx = 0.0f, float gy = 0.0f, float gz = 0.0f) {
-        auto now = std::chrono::steady_clock::now();
-        bool sendProximityUpdate = false;
-        bool newPresence = true;
-        {
-            std::lock_guard<std::mutex> lk(m_mutex);
-            float gyroMag = std::abs(gx) + std::abs(gy) + std::abs(gz);
-            float d = std::abs(m_qw - qw) + std::abs(m_qx - qx) + std::abs(m_qy - qy) + std::abs(m_qz - qz);
-            if (d > 0.0003f || gyroMag > 0.02f) {
-                m_lastHeadMovement = now;
-                if (!m_userPresent || m_inStandby) {
-                    m_userPresent = true;
-                    m_inStandby = false;
-                    sendProximityUpdate = true;
-                    newPresence = true;
-                }
-            } else {
-                auto idleSec = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastHeadMovement).count();
-                if (m_userPresent && idleSec >= 300) {
-                    m_userPresent = false;
-                    sendProximityUpdate = true;
-                    newPresence = false;
-                }
-            }
-            m_qw = qw;
-            m_qx = qx;
-            m_qy = qy;
-            m_qz = qz;
-            m_gx = gx;
-            m_gy = gy;
-            m_gz = gz;
-        }
-        if (sendProximityUpdate && m_hProximity != k_ulInvalidInputComponentHandle) {
-            if (auto vrinput = VRDriverInput()) {
-                vrinput->UpdateBooleanComponent(m_hProximity, newPresence, 0.0);
-            }
-        }
+        std::lock_guard<std::mutex> lk(m_mutex);
+        m_qw = qw;
+        m_qx = qx;
+        m_qy = qy;
+        m_qz = qz;
+        m_gx = gx;
+        m_gy = gy;
+        m_gz = gz;
     }
 
     void UpdatePosition(float px, float py, float pz) {
@@ -861,10 +793,6 @@ private:
     uint64_t m_vsyncCounter = 0;
     std::chrono::steady_clock::time_point m_lastVsyncTime;
     CVRFusionMirrorPresenter m_mirrorPresenter;
-    bool m_userPresent = true;
-    bool m_inStandby = false;
-    std::chrono::steady_clock::time_point m_lastHeadMovement = std::chrono::steady_clock::now();
-    VRInputComponentHandle_t m_hProximity = k_ulInvalidInputComponentHandle;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -1420,10 +1348,9 @@ static void KinectThread() {
                             g_kinectCenterZ = head.z;
                         }
 
-                        // ── Auto-Tilt: True Deadband Full-Body Framing & Slew Jump ──
+                        // ─── Auto-Tilt: Single-Target Body Midpoint Centering with Deadband & Cooldown ───
                         if (g_kinectAutoTilt.load() && !g_kinectMotorLocked.load() && head.z >= 0.8f && head.z <= 4.8f) {
                             float zDist = head.z;
-                            float headAngleDeg = atan2(head.y, zDist) * 57.29578f;
 
                             bool feetTracked = (skel.eSkeletonPositionTrackingState[NUI_SKELETON_POSITION_FOOT_LEFT] == NUI_SKELETON_POSITION_TRACKED ||
                                                 skel.eSkeletonPositionTrackingState[NUI_SKELETON_POSITION_FOOT_RIGHT] == NUI_SKELETON_POSITION_TRACKED);
@@ -1431,58 +1358,45 @@ static void KinectThread() {
                                                  skel.eSkeletonPositionTrackingState[NUI_SKELETON_POSITION_KNEE_RIGHT] == NUI_SKELETON_POSITION_TRACKED);
 
                             float footY = 0.0f;
-                            float footZ = zDist;
                             if (feetTracked) {
                                 footY = (lfoot.y < rfoot.y) ? lfoot.y : rfoot.y;
-                                footZ = (lfoot.y < rfoot.y) ? lfoot.z : rfoot.z;
                             } else if (kneesTracked) {
                                 float lowestKneeY = (lknee.y < rknee.y) ? lknee.y : rknee.y;
                                 footY = lowestKneeY - 0.45f;
                             } else {
                                 footY = hip.y - 0.85f;
                             }
-                            if (footZ < 0.5f) footZ = zDist;
-                            float footAngleDeg = atan2(footY, footZ) * 57.29578f;
 
-                            // Kinect vertical FOV is +-21.8 deg.
-                            // Stable comfort zone: Head in upper half (<= +14 deg), Feet in lower half (>= -14 deg).
-                            float deltaAngle = 0.0f;
+                            // Midpoint between head and lowest body point:
+                            float midY = (head.y + footY) * 0.5f;
+                            float midAngleDeg = atan2(midY, zDist) * 57.29578f;
 
-                            if (headAngleDeg > 14.0f && footAngleDeg > -18.0f) {
-                                // Head too high and approaching top edge: tilt UP to place head at ~+9 deg
-                                deltaAngle = headAngleDeg - 9.0f;
-                            } else if (footAngleDeg < -14.0f && headAngleDeg < 18.0f) {
-                                // Feet too low and approaching bottom edge: tilt DOWN to place feet at ~-9 deg
-                                deltaAngle = footAngleDeg + 9.0f; // negative
-                            } else if (headAngleDeg > 14.0f && footAngleDeg < -14.0f) {
-                                // Person is closer than full vertical FOV: center on torso
-                                deltaAngle = (headAngleDeg + footAngleDeg) * 0.5f;
-                            }
-                            // If both head and feet are comfortably inside (-14 deg to +14 deg), deltaAngle is 0 (SILENT MOTOR)
+                            // Cooldown: at least 4.0 seconds between motor moves to prevent any oscillation
+                            static auto s_lastTiltTime = std::chrono::steady_clock::now();
+                            auto nowTilt = std::chrono::steady_clock::now();
+                            auto timeSinceLastTilt = std::chrono::duration_cast<std::chrono::milliseconds>(nowTilt - s_lastTiltTime).count();
 
-                            if (std::abs(deltaAngle) >= 2.5f) {
-                                long cur = g_kinectTiltAngle.load();
-                                long desiredAngle = (long)std::round((float)cur + deltaAngle);
-                                // Full hardware physical range of Kinect 360 (-27 deg to +27 deg)
-                                if (desiredAngle < -27L) desiredAngle = -27L;
-                                if (desiredAngle > 27L) desiredAngle = 27L;
-
-                                long diff = desiredAngle - cur;
-                                if (diff > 0) {
+                            // Deadband: If body center is within +-5.5 deg of frame center, KEEP MOTOR COMPLETELY STILL
+                            if (std::abs(midAngleDeg) > 5.5f && timeSinceLastTilt >= 4000 && g_targetTiltAngle.load() == -999) {
+                                if (midAngleDeg > 0.0f) {
                                     tiltUpFrames++;
                                     tiltDownFrames = 0;
-                                    if (tiltUpFrames >= 12 && g_targetTiltAngle.load() == -999) {
-                                        g_targetTiltAngle.store(desiredAngle); // DIRECT JUMP in one smooth sweep!
-                                        tiltUpFrames = 0;
-                                    }
-                                } else if (diff < 0) {
+                                } else {
                                     tiltDownFrames++;
                                     tiltUpFrames = 0;
-                                    if (tiltDownFrames >= 12 && g_targetTiltAngle.load() == -999) {
-                                        g_targetTiltAngle.store(desiredAngle); // DIRECT JUMP in one smooth sweep!
-                                        tiltDownFrames = 0;
+                                }
+
+                                if (tiltUpFrames >= 15 || tiltDownFrames >= 15) {
+                                    long cur = g_kinectTiltAngle.load();
+                                    long desiredAngle = (long)std::round((float)cur + midAngleDeg);
+                                    // Full physical range of Kinect 360 motor: -27 deg to +27 deg
+                                    if (desiredAngle < -27L) desiredAngle = -27L;
+                                    if (desiredAngle > 27L) desiredAngle = 27L;
+
+                                    if (desiredAngle != cur) {
+                                        g_targetTiltAngle.store(desiredAngle);
+                                        s_lastTiltTime = nowTilt;
                                     }
-                                } else {
                                     tiltUpFrames = 0;
                                     tiltDownFrames = 0;
                                 }
@@ -1940,6 +1854,11 @@ public:
     const char* const* GetInterfaceVersions() override { return k_InterfaceVersions; }
 
     void RunFrame() override {
+        // Drain events to keep SteamVR message pump responsive
+        VREvent_t vrEvent;
+        while (VRServerDriverHost()->PollNextEvent(&vrEvent, sizeof(vrEvent))) {
+        }
+
         if (g_hmd && g_hmd->IsActivated())
             VRServerDriverHost()->TrackedDevicePoseUpdated(g_hmd->GetDeviceId(), g_hmd->GetPose(), sizeof(DriverPose_t));
 
@@ -1972,17 +1891,14 @@ public:
 
         if (g_trackerRightElbow && g_trackerRightElbow->IsActivated())
             VRServerDriverHost()->TrackedDevicePoseUpdated(g_trackerRightElbow->GetDeviceId(), g_trackerRightElbow->GetPose(), sizeof(DriverPose_t));
+
+        // Yield processor & pace RunFrame (~200 Hz), preventing 100% CPU lock and system lag
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    bool ShouldBlockStandbyMode() override {
-        return (g_hmd != nullptr && g_hmd->IsUserPresent());
-    }
-    void EnterStandby() override {
-        if (g_hmd) g_hmd->EnterStandby();
-    }
-    void LeaveStandby() override {
-        if (g_hmd) g_hmd->LeaveStandby();
-    }
+    bool ShouldBlockStandbyMode() override { return false; }
+    void EnterStandby() override {}
+    void LeaveStandby() override {}
 
 private:
     std::thread m_udpThread;
