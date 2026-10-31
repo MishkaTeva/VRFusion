@@ -649,17 +649,8 @@ public:
         m_deviceId = k_unTrackedDeviceIndexInvalid;
     }
 
-    void EnterStandby() override {
-        m_inStandby = true;
-    }
-
-    void LeaveStandby() {
-        m_inStandby = false;
-    }
-
-    bool IsInStandby() const {
-        return m_inStandby;
-    }
+    void EnterStandby() override {}
+    void LeaveStandby() {}
 
     void* GetComponent(const char* pchComponentNameAndVersion) override {
         if (pchComponentNameAndVersion) {
@@ -804,7 +795,6 @@ private:
     uint64_t m_vsyncCounter = 0;
     std::chrono::steady_clock::time_point m_lastVsyncTime;
     CVRFusionMirrorPresenter m_mirrorPresenter;
-    bool m_inStandby = false;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -1093,11 +1083,6 @@ static void UdpReceiverThread() {
                 // Phone sends OpenVR-standard quaternion (X=right, Y=up, -Z=fwd):
                 g_hmd->UpdateOrientation(pkt->qw, pkt->qx, pkt->qy, pkt->qz);
                 if (g_hmd->IsActivated()) {
-                    if (g_hmd->IsInStandby()) {
-                        g_hmd->LeaveStandby();
-                        VREvent_Data_t ed{};
-                        VRServerDriverHost()->VendorSpecificEvent(g_hmd->GetDeviceId(), (vr::EVREventType)VREvent_TrackedDeviceUserInteractionStarted, ed, 0.0);
-                    }
                     VRServerDriverHost()->TrackedDevicePoseUpdated(g_hmd->GetDeviceId(), g_hmd->GetPose(), sizeof(DriverPose_t));
                 }
 
@@ -1928,24 +1913,9 @@ public:
         std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    bool ShouldBlockStandbyMode() override {
-        if (VRSettings()) {
-            bool pauseOnStandby = VRSettings()->GetBool(k_pch_Power_Section, k_pch_Power_PauseCompositorOnStandby_Bool);
-            if (pauseOnStandby) {
-                uint64_t nowMs = GetTickCount64();
-                if (g_lastImuPacketTime > 0 && (nowMs - g_lastImuPacketTime) > 15000) {
-                    return false;
-                }
-            }
-        }
-        return true;
-    }
-    void EnterStandby() override {
-        if (g_hmd) g_hmd->EnterStandby();
-    }
-    void LeaveStandby() override {
-        if (g_hmd) g_hmd->LeaveStandby();
-    }
+    bool ShouldBlockStandbyMode() override { return true; }
+    void EnterStandby() override {}
+    void LeaveStandby() override {}
 
 private:
     std::thread m_udpThread;
