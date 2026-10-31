@@ -625,9 +625,9 @@ public:
         props->SetBoolProperty  (m_container, Prop_IsOnDesktop_Bool,           false);
         props->SetBoolProperty  (m_container, Prop_HasVirtualDisplayComponent_Bool, true);
         props->SetBoolProperty  (m_container, Prop_DisplayDebugMode_Bool,      false);
-        props->SetBoolProperty  (m_container, Prop_ContainsProximitySensor_Bool, false);
+        props->SetBoolProperty  (m_container, Prop_ContainsProximitySensor_Bool, true);
         props->SetBoolProperty  (m_container, Prop_DeviceProvidesBatteryStatus_Bool, false);
-        props->SetBoolProperty  (m_container, Prop_DeviceCanPowerOff_Bool,     false);
+        props->SetBoolProperty  (m_container, Prop_DeviceCanPowerOff_Bool,     true);
         props->SetBoolProperty  (m_container, Prop_DeviceIsWireless_Bool,      true);
         props->SetBoolProperty  (m_container, Prop_ReportsTimeSinceVSync_Bool, true);
         props->SetBoolProperty  (m_container, Prop_DisplaySuppressed_Bool,     false);
@@ -636,6 +636,11 @@ public:
         props->SetFloatProperty (m_container, Prop_DisplayFrequency_Float,     120.0f);
         props->SetFloatProperty (m_container, Prop_UserIpdMeters_Float,        0.063f);
         props->SetStringProperty(m_container, Prop_InputProfilePath_String,    "{vrfusion}/input/vrfusion_hmd_profile.json");
+
+        if (auto vrinput = VRDriverInput()) {
+            vrinput->CreateBooleanComponent(m_container, "/input/proximity/click", &m_hProximity);
+            vrinput->UpdateBooleanComponent(m_hProximity, true, 0.0);
+        }
 
         m_activated = true;
         m_lastVsyncTime = std::chrono::steady_clock::now();
@@ -691,12 +696,51 @@ public:
         return pose;
     }
 
+    void SetUserPresent(bool present) {
+        if (m_userPresent != present) {
+            m_userPresent = present;
+            if (m_hProximity != k_ulInvalidInputComponentHandle) {
+                if (auto vrinput = VRDriverInput()) {
+                    vrinput->UpdateBooleanComponent(m_hProximity, present, 0.0);
+                }
+            }
+        }
+    }
+
     void UpdateOrientation(float qw, float qx, float qy, float qz) {
-        std::lock_guard<std::mutex> lk(m_mutex);
-        m_qw = qw;
-        m_qx = qx;
-        m_qy = qy;
-        m_qz = qz;
+        auto now = std::chrono::steady_clock::now();
+        bool becamePresent = false;
+        {
+            std::lock_guard<std::mutex> lk(m_mutex);
+            float d = std::abs(m_qw - qw) + std::abs(m_qx - qx) + std::abs(m_qy - qy) + std::abs(m_qz - qz);
+            if (d > 0.0003f) {
+                m_lastHeadMovement = now;
+                if (!m_userPresent) {
+                    m_userPresent = true;
+                    becamePresent = true;
+                }
+            } else {
+                auto idleSec = std::chrono::duration_cast<std::chrono::seconds>(now - m_lastHeadMovement).count();
+                if (m_userPresent && idleSec >= 30) {
+                    m_userPresent = false;
+                    becamePresent = false;
+                    if (m_hProximity != k_ulInvalidInputComponentHandle) {
+                        if (auto vrinput = VRDriverInput()) {
+                            vrinput->UpdateBooleanComponent(m_hProximity, false, 0.0);
+                        }
+                    }
+                }
+            }
+            m_qw = qw;
+            m_qx = qx;
+            m_qy = qy;
+            m_qz = qz;
+        }
+        if (becamePresent && m_hProximity != k_ulInvalidInputComponentHandle) {
+            if (auto vrinput = VRDriverInput()) {
+                vrinput->UpdateBooleanComponent(m_hProximity, true, 0.0);
+            }
+        }
     }
 
     void UpdatePosition(float px, float py, float pz) {
@@ -794,7 +838,10 @@ private:
     uint64_t m_vsyncCounter = 0;
     std::chrono::steady_clock::time_point m_lastVsyncTime;
     CVRFusionMirrorPresenter m_mirrorPresenter;
+    bool m_userPresent = true;
     bool m_inStandby = false;
+    std::chrono::steady_clock::time_point m_lastHeadMovement = std::chrono::steady_clock::now();
+    VRInputComponentHandle_t m_hProximity = k_ulInvalidInputComponentHandle;
 };
 
 // ════════════════════════════════════════════════════════════════════
