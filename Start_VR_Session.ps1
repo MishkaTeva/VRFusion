@@ -106,12 +106,6 @@ Stop-Process -Name 'VRFusion_Server' -Force -ErrorAction SilentlyContinue
 
 # 4. Start SteamVR
 Write-Host '[4/5] Zapusk SteamVR...' -ForegroundColor Yellow
-$steamConfigDir = 'C:\Program Files (x86)\Steam\config'
-$chapFile = Join-Path $steamConfigDir 'chaperone_info.vrchap'
-$srcChap = Join-Path $vrDir 'chaperone_info.vrchap'
-if ((Test-Path $steamConfigDir) -and (Test-Path $srcChap) -and !(Test-Path $chapFile)) {
-    Copy-Item $srcChap $chapFile -Force -ErrorAction SilentlyContinue
-}
 $vrProc = Get-Process -Name 'vrcompositor' -ErrorAction SilentlyContinue
 if (!$vrProc) {
     Start-Process -FilePath 'C:\Program Files (x86)\Steam\steam.exe' -ArgumentList '-applaunch 250820'

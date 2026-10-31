@@ -649,8 +649,13 @@ public:
         m_deviceId = k_unTrackedDeviceIndexInvalid;
     }
 
-    void EnterStandby() override {}
-    void LeaveStandby() {}
+    void EnterStandby() override {
+        m_inStandby = true;
+    }
+
+    void LeaveStandby() {
+        m_inStandby = false;
+    }
 
     void* GetComponent(const char* pchComponentNameAndVersion) override {
         if (pchComponentNameAndVersion) {
@@ -759,18 +764,12 @@ public:
     }
 
     void WaitForPresent() override {
-        // High-precision 120 FPS vsync pacing (8333.33 microseconds)
+        // High-precision 120 FPS vsync pacing (8333.33 microseconds) without CPU busy-wait
         using namespace std::chrono;
         auto target = m_lastVsyncTime + microseconds(8333);
         auto now = steady_clock::now();
         if (target > now) {
-            auto diffUs = duration_cast<microseconds>(target - now).count();
-            if (diffUs > 2000) {
-                Sleep((DWORD)((diffUs - 1500) / 1000));
-            }
-            while (steady_clock::now() < target) {
-                YieldProcessor();
-            }
+            std::this_thread::sleep_until(target);
         }
         m_lastVsyncTime = steady_clock::now();
     }
@@ -795,6 +794,7 @@ private:
     uint64_t m_vsyncCounter = 0;
     std::chrono::steady_clock::time_point m_lastVsyncTime;
     CVRFusionMirrorPresenter m_mirrorPresenter;
+    bool m_inStandby = false;
 };
 
 // ════════════════════════════════════════════════════════════════════
@@ -1870,12 +1870,6 @@ public:
     const char* const* GetInterfaceVersions() override { return k_InterfaceVersions; }
 
     void RunFrame() override {
-        // Drain events to keep SteamVR message pump responsive
-        VREvent_t vrEvent;
-        while (VRServerDriverHost()->PollNextEvent(&vrEvent, sizeof(vrEvent))) {
-            // Process events if needed
-        }
-
         if (g_hmd && g_hmd->IsActivated())
             VRServerDriverHost()->TrackedDevicePoseUpdated(g_hmd->GetDeviceId(), g_hmd->GetPose(), sizeof(DriverPose_t));
 
@@ -1908,14 +1902,15 @@ public:
 
         if (g_trackerRightElbow && g_trackerRightElbow->IsActivated())
             VRServerDriverHost()->TrackedDevicePoseUpdated(g_trackerRightElbow->GetDeviceId(), g_trackerRightElbow->GetPose(), sizeof(DriverPose_t));
-
-        // Yield processor & pace RunFrame (~200 Hz), preventing server_main watchdog aborts
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
     }
 
-    bool ShouldBlockStandbyMode() override { return true; }
-    void EnterStandby() override {}
-    void LeaveStandby() override {}
+    bool ShouldBlockStandbyMode() override { return false; }
+    void EnterStandby() override {
+        if (g_hmd) g_hmd->EnterStandby();
+    }
+    void LeaveStandby() override {
+        if (g_hmd) g_hmd->LeaveStandby();
+    }
 
 private:
     std::thread m_udpThread;
