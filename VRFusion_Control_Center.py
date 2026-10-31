@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 """
 VRFusion Control Center
@@ -321,7 +321,7 @@ class VRFusionControlCenter:
         # Tilt motor controls
         k_tilt_header = tk.Frame(kinect_card, bg="#121318")
         k_tilt_header.pack(fill=tk.X, pady=(2, 1))
-        tk.Label(k_tilt_header, text="Угол наклона (-8°..+14°):", font=("Segoe UI", 9), bg="#121318", fg="#cbd5e1").pack(side=tk.LEFT)
+        tk.Label(k_tilt_header, text="Угол наклона (-27°..+27°):", font=("Segoe UI", 9), bg="#121318", fg="#cbd5e1").pack(side=tk.LEFT)
         self.lbl_tilt_val = tk.Label(k_tilt_header, text="0°", font=("Segoe UI", 9, "bold"), bg="#121318", fg="#00e676")
         self.lbl_tilt_val.pack(side=tk.RIGHT)
 

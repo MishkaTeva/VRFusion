@@ -1287,8 +1287,8 @@ static void KinectElevationThread(INuiSensor* sensor) {
         long current = g_kinectTiltAngle.load();
 
         if (target != -999 && !g_kinectMotorLocked.load()) {
-            if (target < -8L) target = -8L;
-            if (target > 14L) target = 14L;
+            if (target < -27L) target = -27L;
+            if (target > 27L) target = 27L;
 
             if (target != current) {
                 // Direct smooth motion to target angle in one single sweep
@@ -1463,9 +1463,9 @@ static void KinectThread() {
                             if (std::abs(deltaAngle) >= 2.5f) {
                                 long cur = g_kinectTiltAngle.load();
                                 long desiredAngle = (long)std::round((float)cur + deltaAngle);
-                                // Hardware safety limits: never point down into floor (-8 deg) or into ceiling (+14 deg)
-                                if (desiredAngle < -8L) desiredAngle = -8L;
-                                if (desiredAngle > 14L) desiredAngle = 14L;
+                                // Full hardware physical range of Kinect 360 (-27 deg to +27 deg)
+                                if (desiredAngle < -27L) desiredAngle = -27L;
+                                if (desiredAngle > 27L) desiredAngle = 27L;
 
                                 long diff = desiredAngle - cur;
                                 if (diff > 0) {
@@ -1741,14 +1741,14 @@ static void DriverCommandThread() {
                 if (!g_kinectMotorLocked.load()) {
                     long cur = (g_targetTiltAngle.load() != -999) ? g_targetTiltAngle.load() : g_kinectTiltAngle.load();
                     long newAngle = cur + 3L;
-                    if (newAngle > 14L) newAngle = 14L;
+                    if (newAngle > 27L) newAngle = 27L;
                     g_targetTiltAngle.store(newAngle);
                 }
             } else if (cmd.find("KINECT_TILT_DOWN") != std::string::npos) {
                 if (!g_kinectMotorLocked.load()) {
                     long cur = (g_targetTiltAngle.load() != -999) ? g_targetTiltAngle.load() : g_kinectTiltAngle.load();
                     long newAngle = cur - 3L;
-                    if (newAngle < -8L) newAngle = -8L;
+                    if (newAngle < -27L) newAngle = -27L;
                     g_targetTiltAngle.store(newAngle);
                 }
             } else if (cmd.find("KINECT_TILT_ZERO") != std::string::npos) {
@@ -1759,8 +1759,8 @@ static void DriverCommandThread() {
                 if (!g_kinectMotorLocked.load()) {
                     try {
                         long deg = std::stol(cmd.substr(16));
-                        if (deg > 14L) deg = 14L;
-                        if (deg < -8L) deg = -8L;
+                        if (deg > 27L) deg = 27L;
+                        if (deg < -27L) deg = -27L;
                         g_targetTiltAngle.store(deg);
                     } catch (...) {}
                 }
