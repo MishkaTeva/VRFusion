@@ -193,6 +193,7 @@ try {
 
         $proc = [System.Diagnostics.Process]::Start($psi)
         $reader = $proc.StandardOutput
+        $errReader = $proc.StandardError
 
         $curFrame = "0"
         $curFps = "0"
@@ -212,6 +213,16 @@ try {
         }
         $proc.WaitForExit()
         [Console]::WriteLine("")
+
+        if ($proc.ExitCode -ne 0) {
+            $errContent = $errReader.ReadToEnd()
+            if ($errContent) {
+                $errLines = $errContent -split "`r?`n" | Where-Object { $_ -match "(error|failed|refused|cannot|unable)" }
+                if ($errLines) {
+                    Write-Host "[FFmpeg Error] $($errLines[-1])" -ForegroundColor Red
+                }
+            }
+        }
 
         Write-Host 'Translyaciya perervana. Perezapusk cherez 1 sek...' -ForegroundColor DarkYellow
         Start-Sleep -Seconds 1
